@@ -329,8 +329,10 @@ export default function App() {
   };
 
   const handleGoogleSuccess = async (credentialResponse: any) => {
+    console.log("Google Auth Success, decoding token...");
     try {
       const decoded: any = jwtDecode(credentialResponse.credential);
+      console.log("Decoded Google User:", decoded.email);
       
       // Check if user exists
       const { data: existingUser, error: fetchError } = await supabase
@@ -339,12 +341,17 @@ export default function App() {
         .eq('identifier', decoded.email)
         .single();
 
-      if (fetchError && fetchError.code !== 'PGRST116') throw fetchError;
+      if (fetchError && fetchError.code !== 'PGRST116') {
+        console.error("Supabase fetch error:", fetchError);
+        throw fetchError;
+      }
 
       let userData;
       if (existingUser) {
+        console.log("Existing user found:", existingUser.identifier);
         userData = existingUser;
       } else {
+        console.log("New user, creating record...");
         const { data: newUser, error: insertError } = await supabase
           .from('users')
           .insert([
@@ -352,21 +359,27 @@ export default function App() {
               identifier: decoded.email, 
               name: decoded.name, 
               auth_provider: 'google',
-              is_verified: true
+              is_verified: true,
+              role: 'user'
             }
           ])
           .select()
           .single();
         
-        if (insertError) throw insertError;
+        if (insertError) {
+          console.error("Supabase insert error:", insertError);
+          throw insertError;
+        }
         userData = newUser;
       }
 
       setUser(userData);
       localStorage.setItem('tremseh_user', JSON.stringify(userData));
       setShowLogin(false);
+      console.log("Login successful for:", userData.identifier);
     } catch (err: any) {
-      alert(err.message || 'فشل تسجيل الدخول عبر جوجل');
+      console.error("Detailed Google Login Error:", err);
+      alert('فشل تسجيل الدخول عبر جوجل: ' + (err.message || 'خطأ غير معروف'));
     }
   };
 
