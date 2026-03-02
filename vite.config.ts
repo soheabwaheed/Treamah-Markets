@@ -10,7 +10,7 @@ export default defineConfig(({mode}) => {
     plugins: [react(), tailwindcss()],
     build: {
       outDir: 'dist',
-      assetsDir: 'assets',
+      assetsDir: '', // جعل الملفات في الجذر مباشرة لسهولة الوصول
       emptyOutDir: true,
       sourcemap: false,
       rollupOptions: {
