@@ -359,8 +359,7 @@ export default function App() {
               identifier: decoded.email, 
               name: decoded.name, 
               auth_provider: 'google',
-              is_verified: true,
-              role: 'user'
+              is_verified: true
             }
           ])
           .select()
