@@ -9,7 +9,10 @@ export default defineConfig(({mode}) => {
     base: './',
     plugins: [react(), tailwindcss()],
     build: {
-      assetsDir: '',
+      outDir: 'dist',
+      assetsDir: 'assets',
+      emptyOutDir: true,
+      sourcemap: false,
       rollupOptions: {
         output: {
           manualChunks: undefined,

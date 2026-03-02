@@ -5,10 +5,21 @@
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>أسواق تريمسة</title>
+    <style>
+      #root:empty::before {
+        content: 'جاري تحميل الموقع... إذا استمرت هذه الرسالة، يرجى التأكد من رفع ملفات المجلد dist بالكامل.';
+        display: block;
+        text-align: center;
+        padding: 50px;
+        font-family: sans-serif;
+        color: #666;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <noscript>يجب تفعيل الجافا سكريبت لتشغيل هذا الموقع.</noscript>
   </body>
 </html>
 
