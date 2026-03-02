@@ -568,36 +568,36 @@ export default function App() {
       {/* Header */}
       <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-stone-200">
         <div className="max-w-7xl mx-auto px-4 h-12 flex items-center justify-between">
-          <div className="flex items-center gap-8">
-            <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3 sm:gap-8 overflow-hidden flex-1">
+            <div className="flex items-center gap-2 shrink-0">
               <div className="w-7 h-7 bg-emerald-600 rounded-lg flex items-center justify-center text-white shadow-lg shadow-emerald-200">
                 <Home size={18} />
               </div>
-              <h1 className="text-base font-bold text-stone-800">أسواق تريمسة</h1>
+              <h1 className="text-base font-bold text-stone-800 whitespace-nowrap">أسواق تريمسة</h1>
             </div>
 
-            <nav className="hidden md:flex items-center gap-2">
+            <nav className="flex items-center gap-1 overflow-x-auto no-scrollbar whitespace-nowrap">
               <button 
                 onClick={() => setActiveView('market')}
-                className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${activeView === 'market' ? 'bg-emerald-50 text-emerald-700' : 'text-stone-500 hover:bg-stone-50'}`}
+                className={`px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold transition-all ${activeView === 'market' ? 'bg-emerald-50 text-emerald-700' : 'text-stone-500 hover:bg-stone-50'}`}
               >
                 السوق
               </button>
               <button 
                 onClick={() => setActiveView('about')}
-                className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${activeView === 'about' ? 'bg-emerald-50 text-emerald-700' : 'text-stone-500 hover:bg-stone-50'}`}
+                className={`px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold transition-all ${activeView === 'about' ? 'bg-emerald-50 text-emerald-700' : 'text-stone-500 hover:bg-stone-50'}`}
               >
                 حول تريمسة
               </button>
               <button 
                 onClick={() => setActiveView('about_us')}
-                className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${activeView === 'about_us' ? 'bg-emerald-50 text-emerald-700' : 'text-stone-500 hover:bg-stone-50'}`}
+                className={`px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold transition-all ${activeView === 'about_us' ? 'bg-emerald-50 text-emerald-700' : 'text-stone-500 hover:bg-stone-50'}`}
               >
                 من نحن
               </button>
               <button 
                 onClick={() => setActiveView('contact')}
-                className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${activeView === 'contact' ? 'bg-emerald-50 text-emerald-700' : 'text-stone-500 hover:bg-stone-50'}`}
+                className={`px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold transition-all ${activeView === 'contact' ? 'bg-emerald-50 text-emerald-700' : 'text-stone-500 hover:bg-stone-50'}`}
               >
                 اتصل بنا
               </button>
