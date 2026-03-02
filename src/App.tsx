@@ -370,7 +370,7 @@ export default function App() {
     }
   };
 
-  const googleClientId = '871939628702-ksr4bvt1shac8p32ms7kp5i3s5ud9pmh.apps.googleusercontent.com';
+  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '871939628702-ksr4bvt1shac8p32ms7kp5i3s5ud9pmh.apps.googleusercontent.com';
 
   const handleLogout = () => {
     setUser(null);
