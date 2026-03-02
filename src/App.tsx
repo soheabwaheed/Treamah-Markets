@@ -383,7 +383,7 @@ export default function App() {
     }
   };
 
-  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '871939628702-ksr4bvt1shac8p32ms7kp5i3s5ud9pmh.apps.googleusercontent.com';
+  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '332213587623-60s2jn2b9ng4paaq3tgom4nqe2jttitt.apps.googleusercontent.com';
 
   const handleLogout = () => {
     setUser(null);
