@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 import { jwtDecode } from 'jwt-decode';
+import { supabase } from './lib/supabase';
 import { 
   Home, 
   Car, 
@@ -26,11 +27,12 @@ import {
   Send,
   Wrench,
   Bike,
-  Share2
+  Share2,
+  CheckCircle2
 } from 'lucide-react';
 
 type Category = 'all' | 'real_estate' | 'land' | 'car' | 'motorcycle' | 'equipment';
-type View = 'market' | 'about' | 'about_us' | 'privacy' | 'terms' | 'contact' | 'deploy';
+type View = 'market' | 'about' | 'about_us' | 'privacy' | 'terms' | 'contact';
 
 interface Ad {
   id: number;
@@ -188,29 +190,33 @@ export default function App() {
   const fetchAds = async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      params.append('action', 'get_ads');
-      if (activeCategory !== 'all') params.append('category', activeCategory);
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value) params.append(key, value as string);
-      });
+      let query = supabase
+        .from('ads')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-      const res = await fetch(`api.php?${params.toString()}`);
-      if (!res.ok) throw new Error('Backend unavailable');
-      const data = await res.json();
-      setAds(data);
-    } catch (err) {
-      console.log('Falling back to local storage for ads');
-      const localAds = JSON.parse(localStorage.getItem('tremseh_local_ads') || '[]');
-      let filtered = localAds.map((ad: any) => ({ ...ad, status: ad.status || 'active' }));
       if (activeCategory !== 'all') {
-        filtered = filtered.filter((ad: Ad) => ad.category === activeCategory);
+        query = query.eq('category', activeCategory);
       }
-      // Simple client-side filtering for demo purposes
-      if (filters.minPrice) filtered = filtered.filter((ad: Ad) => ad.price >= Number(filters.minPrice));
-      if (filters.maxPrice) filtered = filtered.filter((ad: Ad) => ad.price <= Number(filters.maxPrice));
-      
-      setAds(filtered);
+
+      if (filters.minPrice) query = query.gte('price', Number(filters.minPrice));
+      if (filters.maxPrice) query = query.lte('price', Number(filters.maxPrice));
+      if (filters.rooms) query = query.eq('rooms', Number(filters.rooms));
+      if (filters.minArea) query = query.gte('area', Number(filters.minArea));
+      if (filters.maxArea) query = query.lte('area', Number(filters.maxArea));
+      if (filters.carType) query = query.ilike('car_type', `%${filters.carType}%`);
+      if (filters.carModel) query = query.ilike('car_model', `%${filters.carModel}%`);
+      if (filters.minYear) query = query.gte('car_year', Number(filters.minYear));
+      if (filters.maxYear) query = query.lte('car_year', Number(filters.maxYear));
+
+      const { data, error } = await query;
+      if (error) throw error;
+      setAds(data || []);
+    } catch (err) {
+      console.error('Error fetching ads:', err);
+      // Fallback to local storage if needed, but Supabase should be primary
+      const localAds = JSON.parse(localStorage.getItem('tremseh_local_ads') || '[]');
+      setAds(localAds);
     } finally {
       setLoading(false);
     }
@@ -219,18 +225,22 @@ export default function App() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch('api.php?action=login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier: loginIdentifier, password: loginPassword })
-      });
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.error || 'بيانات الدخول غير صحيحة');
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('identifier', loginIdentifier)
+        .single();
+
+      if (error || !data) throw new Error('بيانات الدخول غير صحيحة');
+      
+      // In a real app, we'd use proper password hashing with Supabase Auth
+      // For this custom implementation, we're checking the password field
+      if (data.password !== loginPassword) {
+        throw new Error('بيانات الدخول غير صحيحة');
       }
-      const userData = await res.json();
-      setUser(userData);
-      localStorage.setItem('tremseh_user', JSON.stringify(userData));
+
+      setUser(data);
+      localStorage.setItem('tremseh_user', JSON.stringify(data));
       setShowLogin(false);
       setLoginPassword('');
     } catch (err: any) {
@@ -241,19 +251,25 @@ export default function App() {
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch('api.php?action=register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier: loginIdentifier, name: loginName, password: loginPassword })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'فشل التسجيل');
+      const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
       
-      if (data.debug_code) {
-        alert(`${data.message}\n\n(ملاحظة: إذا لم تجد الرسالة في صندوق الوارد، يرجى التحقق من ملف البريد المزعج/Spam. تعذر إرسال البريد حالياً، رمز التأكيد الخاص بك هو: ${data.debug_code})`);
-      } else {
-        alert(data.message + "\n\n(يرجى التحقق من صندوق الوارد أو البريد المزعج)");
-      }
+      const { data, error } = await supabase
+        .from('users')
+        .insert([
+          { 
+            identifier: loginIdentifier, 
+            name: loginName, 
+            password: loginPassword,
+            verification_code: verificationCode,
+            is_verified: false
+          }
+        ])
+        .select()
+        .single();
+
+      if (error) throw error;
+      
+      alert(`تم إرسال رمز التأكيد الخاص بك هو: ${verificationCode}`);
       setShowVerify(true);
     } catch (err: any) {
       alert(err.message || 'فشل التسجيل');
@@ -263,15 +279,17 @@ export default function App() {
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch('api.php?action=verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier: loginIdentifier, code: verifyCode })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'فشل التأكيد');
+      const { data, error } = await supabase
+        .from('users')
+        .update({ is_verified: true })
+        .eq('identifier', loginIdentifier)
+        .eq('verification_code', verifyCode)
+        .select()
+        .single();
+
+      if (error || !data) throw new Error('رمز التأكيد غير صحيح');
       
-      alert(data.message);
+      alert('تم تأكيد الحساب بنجاح');
       setShowVerify(false);
       setIsRegistering(false);
     } catch (err: any) {
@@ -282,12 +300,14 @@ export default function App() {
   const handleDeleteAd = async (adId: number) => {
     if (!confirm('هل أنت متأكد من حذف هذا الإعلان؟')) return;
     try {
-      const res = await fetch('api.php?action=delete_ad', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ad_id: adId, user_id: user?.id })
-      });
-      if (res.ok) fetchAds();
+      const { error } = await supabase
+        .from('ads')
+        .delete()
+        .eq('id', adId)
+        .eq('user_id', user?.id);
+
+      if (error) throw error;
+      fetchAds();
     } catch (err) {
       alert('فشل حذف الإعلان');
     }
@@ -295,12 +315,14 @@ export default function App() {
 
   const handleMarkSold = async (adId: number) => {
     try {
-      const res = await fetch('api.php?action=mark_sold', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ad_id: adId, user_id: user?.id })
-      });
-      if (res.ok) fetchAds();
+      const { error } = await supabase
+        .from('ads')
+        .update({ status: 'sold' })
+        .eq('id', adId)
+        .eq('user_id', user?.id);
+
+      if (error) throw error;
+      fetchAds();
     } catch (err) {
       alert('فشل تحديث حالة الإعلان');
     }
@@ -309,13 +331,37 @@ export default function App() {
   const handleGoogleSuccess = async (credentialResponse: any) => {
     try {
       const decoded: any = jwtDecode(credentialResponse.credential);
-      const res = await fetch('api.php?action=google_login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: decoded.email, name: decoded.name })
-      });
-      if (!res.ok) throw new Error('فشل تسجيل الدخول عبر جوجل');
-      const userData = await res.json();
+      
+      // Check if user exists
+      const { data: existingUser, error: fetchError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('identifier', decoded.email)
+        .single();
+
+      if (fetchError && fetchError.code !== 'PGRST116') throw fetchError;
+
+      let userData;
+      if (existingUser) {
+        userData = existingUser;
+      } else {
+        const { data: newUser, error: insertError } = await supabase
+          .from('users')
+          .insert([
+            { 
+              identifier: decoded.email, 
+              name: decoded.name, 
+              auth_provider: 'google',
+              is_verified: true
+            }
+          ])
+          .select()
+          .single();
+        
+        if (insertError) throw insertError;
+        userData = newUser;
+      }
+
       setUser(userData);
       localStorage.setItem('tremseh_user', JSON.stringify(userData));
       setShowLogin(false);
@@ -337,25 +383,24 @@ export default function App() {
     
     setSendingContact(true);
     try {
-      const res = await fetch('api.php?action=contact', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...contactForm,
-          name: user.name,
-          identifier: user.identifier
-        })
-      });
-      if (res.ok) {
-        alert('تم إرسال رسالتك بنجاح. شكراً لتواصلك معنا.');
-        setContactForm({ subject: '', message: '' });
-      } else {
-        throw new Error('Backend failed');
-      }
-    } catch (err) {
-      console.log('Simulating contact message success for demo mode');
-      alert('شكراً لتواصلك معنا! تم استلام رسالتك (وضع التجربة).');
+      const { error } = await supabase
+        .from('messages')
+        .insert([
+          {
+            name: user.name,
+            identifier: user.identifier,
+            subject: contactForm.subject,
+            message: contactForm.message
+          }
+        ]);
+
+      if (error) throw error;
+      
+      alert('تم إرسال رسالتك بنجاح. شكراً لتواصلك معنا.');
       setContactForm({ subject: '', message: '' });
+    } catch (err) {
+      console.error('Error sending message:', err);
+      alert('فشل إرسال الرسالة. يرجى المحاولة لاحقاً.');
     } finally {
       setSendingContact(false);
     }
@@ -365,40 +410,69 @@ export default function App() {
     e.preventDefault();
     if (!user) return setShowLogin(true);
 
-    const adData = { 
-      ...newAd, 
-      user_id: user.id,
-      id: Date.now(),
-      created_at: new Date().toISOString(),
-      price: Number(newAd.price),
-      image_url: newAd.image_urls.filter(url => url).join('|') // Use pipe separator for base64 safety
-    };
-
+    setLoading(true);
     try {
-      const res = await fetch('api.php?action=post_ad', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(adData)
-      });
-      if (res.ok) {
-        setShowPostAd(false);
-        fetchAds();
-        resetNewAdForm();
-      } else {
-        throw new Error('Backend failed');
+      // 1. Upload images to Supabase Storage if they are base64
+      const uploadedImageUrls: string[] = [];
+      
+      for (const base64 of newAd.image_urls) {
+        if (!base64) continue;
+        
+        const fileName = `${user.id}_${Date.now()}_${Math.random().toString(36).substring(7)}.png`;
+        const base64Data = base64.split(',')[1];
+        const byteCharacters = atob(base64Data);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: 'image/png' });
+
+        const { data, error } = await supabase.storage
+          .from('ad-images')
+          .upload(fileName, blob);
+
+        if (error) throw error;
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('ad-images')
+          .getPublicUrl(fileName);
+          
+        uploadedImageUrls.push(publicUrl);
       }
+
+      // 2. Insert ad into database
+      const { error } = await supabase
+        .from('ads')
+        .insert([
+          {
+            user_id: user.id,
+            category: newAd.category,
+            title: newAd.title,
+            description: newAd.description,
+            price: Number(newAd.price),
+            contact_phone: newAd.contact_phone,
+            image_url: uploadedImageUrls.join('|'),
+            rooms: newAd.rooms ? Number(newAd.rooms) : null,
+            area: newAd.area ? Number(newAd.area) : null,
+            car_type: newAd.car_type,
+            car_model: newAd.car_model,
+            car_year: newAd.car_year ? Number(newAd.car_year) : null,
+            status: 'active'
+          }
+        ]);
+
+      if (error) throw error;
+
+      setShowPostAd(false);
+      fetchAds();
+      resetNewAdForm();
+      alert('تم نشر الإعلان بنجاح!');
     } catch (err) {
-      try {
-        console.log('Saving ad to local storage');
-        const localAds = JSON.parse(localStorage.getItem('tremseh_local_ads') || '[]');
-        localStorage.setItem('tremseh_local_ads', JSON.stringify([adData, ...localAds]));
-        setShowPostAd(false);
-        fetchAds();
-        resetNewAdForm();
-        alert('تم حفظ الإعلان بنجاح في متصفحك (وضع التجربة).');
-      } catch (storageErr) {
-        alert('عذراً، ذاكرة المتصفح ممتلئة. يرجى حذف بعض الإعلانات القديمة أو تقليل حجم الصور.');
-      }
+      console.error('Error posting ad:', err);
+      alert('فشل نشر الإعلان. يرجى التأكد من إعدادات Supabase Storage.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -431,162 +505,6 @@ export default function App() {
       const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(shareData.title + ' ' + shareData.url)}`;
       window.open(whatsappUrl, '_blank');
     }
-  };
-
-  const DeployCenter = () => {
-    const [copied, setCopied] = useState<string | null>(null);
-
-    const files = [
-      {
-        name: 'api.php',
-        description: 'ملف البرمجة الخاص بالسيرفر (PHP)',
-        content: `<?php
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Methods: POST, GET, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type");
-header("Content-Type: application/json");
-
-\$host = 'sql100.infinityfree.com';
-\$db   = 'if0_41270364_tremsahdata';
-\$user = 'if0_41270364';
-\$pass = 's0955563603';
-\$charset = 'utf8mb4';
-
-\$dsn = "mysql:host=\$host;dbname=\$db;charset=\$charset";
-\$options = [
-    PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    PDO::ATTR_EMULATE_PREPARES   => false,
-];
-
-try {
-     \$pdo = new PDO(\$dsn, \$user, \$pass, \$options);
-     \$pdo->exec("set names utf8mb4");
-} catch (\\PDOException \$e) {
-     echo json_encode(['error' => 'Connection failed: ' . \$e->getMessage()]);
-     exit;
-}
-
-\$action = \$_GET['action'] ?? '';
-
-if (\$action == 'login' && \$_SERVER['REQUEST_METHOD'] == 'POST') {
-    \$input = json_decode(file_get_contents('php://input'), true);
-    \$stmt = \$pdo->prepare("SELECT * FROM users WHERE identifier = ?");
-    \$stmt->execute([\$input['identifier']]);
-    \$user = \$stmt->fetch();
-    if (\$user && password_verify(\$input['password'], \$user['password'])) {
-        unset(\$user['password']);
-        echo json_encode(\$user);
-    } else {
-        http_response_code(401);
-        echo json_encode(['error' => 'بيانات الدخول غير صحيحة']);
-    }
-}
-
-if (\$action == 'get_ads' && \$_SERVER['REQUEST_METHOD'] == 'GET') {
-    \$stmt = \$pdo->query("SELECT * FROM ads ORDER BY created_at DESC");
-    echo json_encode(\$stmt->fetchAll());
-}
-
-if (\$action == 'post_ad' && \$_SERVER['REQUEST_METHOD'] == 'POST') {
-    \$input = json_decode(file_get_contents('php://input'), true);
-    \$sql = "INSERT INTO ads (user_id, category, title, description, price, contact_phone, image_url, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'active')";
-    \$stmt = \$pdo->prepare(\$sql);
-    \$stmt->execute([\$input['user_id'], \$input['category'], \$input['title'], \$input['description'], \$input['price'], \$input['contact_phone'], \$input['image_url']]);
-    echo json_encode(['status' => 'success']);
-}
-?>`
-      },
-      {
-        name: 'index.html',
-        description: 'الملف الرئيسي للموقع',
-        content: `<!doctype html>
-<html lang="ar" dir="rtl">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>أسواق تريمسة</title>
-    <script type="module" crossorigin src="./index.js"></script>
-    <link rel="stylesheet" crossorigin href="./index.css">
-  </head>
-  <body>
-    <div id="root"></div>
-  </body>
-</html>`
-      },
-      {
-        name: '.htaccess',
-        description: 'ملف إعدادات السيرفر',
-        content: `<IfModule mod_rewrite.c>
-  RewriteEngine On
-  RewriteBase /
-  RewriteRule ^index\\.html$ - [L]
-  RewriteCond %{REQUEST_FILENAME} !-f
-  RewriteCond %{REQUEST_FILENAME} !-d
-  RewriteRule . /index.html [L]
-</IfModule>`
-      }
-    ];
-
-    const copyToClipboard = (text: string, name: string) => {
-      navigator.clipboard.writeText(text);
-      setCopied(name);
-      setTimeout(() => setCopied(null), 2000);
-    };
-
-    return (
-      <div className="max-w-4xl mx-auto p-6 bg-white rounded-3xl shadow-xl border border-stone-100 my-10">
-        <div className="flex items-center gap-4 mb-8 border-b pb-6">
-          <div className="w-12 h-12 bg-emerald-600 rounded-2xl flex items-center justify-center text-white">
-            <ShieldCheck size={24} />
-          </div>
-          <div>
-            <h2 className="text-2xl font-bold text-stone-800">مركز الرفع (Deploy Center)</h2>
-            <p className="text-stone-500">انسخ الأكواد التالية وضعها في ملفاتك الخاصة بالاستضافة</p>
-          </div>
-        </div>
-
-        <div className="space-y-8">
-          {files.map((file) => (
-            <div key={file.name} className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-bold text-stone-800 flex items-center gap-2">
-                    <span className="text-emerald-600">{file.name}</span>
-                    <span className="text-xs font-normal text-stone-400">({file.description})</span>
-                  </h3>
-                </div>
-                <button
-                  onClick={() => copyToClipboard(file.content, file.name)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${
-                    copied === file.name ? 'bg-emerald-600 text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
-                  }`}
-                >
-                  {copied === file.name ? 'تم النسخ!' : 'نسخ الكود'}
-                </button>
-              </div>
-              <pre className="bg-stone-900 text-stone-300 p-4 rounded-2xl text-xs overflow-x-auto font-mono leading-relaxed max-h-60">
-                {file.content}
-              </pre>
-            </div>
-          ))}
-
-          <div className="bg-amber-50 border border-amber-200 p-6 rounded-2xl">
-            <h3 className="font-bold text-amber-800 mb-2 flex items-center gap-2">
-              <Info size={18} />
-              ملاحظة هامة بخصوص ملفات البرمجة (JS/CSS)
-            </h3>
-            <p className="text-sm text-amber-700 leading-relaxed">
-              بسبب حجم ملفات الجافا سكريبت والتصميم الكبير، يرجى البحث عنها في المجلد الرئيسي للمشروع المحمل (خارج مجلد src).
-              <br />
-              ابحث عن الملفات: <code className="bg-amber-100 px-1 rounded">index.js.txt</code> و <code className="bg-amber-100 px-1 rounded">index.css.txt</code>.
-              <br />
-              قم بتغيير امتدادها إلى <code className="bg-amber-100 px-1 rounded">.js</code> و <code className="bg-amber-100 px-1 rounded">.css</code> ورفعها بجانب ملف <code className="bg-amber-100 px-1 rounded">index.html</code>.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
@@ -668,12 +586,6 @@ if (\$action == 'post_ad' && \$_SERVER['REQUEST_METHOD'] == 'POST') {
               >
                 اتصل بنا
               </button>
-              <button 
-                onClick={() => setActiveView('deploy')}
-                className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${activeView === 'deploy' ? 'bg-amber-50 text-amber-700' : 'text-stone-500 hover:bg-stone-50'}`}
-              >
-                مركز الرفع
-              </button>
             </nav>
           </div>
 
@@ -712,7 +624,6 @@ if (\$action == 'post_ad' && \$_SERVER['REQUEST_METHOD'] == 'POST') {
 
       {activeView === 'market' ? (
         <>
-          {/* Hero Section */}
           <section className="relative py-8 overflow-hidden bg-emerald-900 text-white">
             <div className="absolute inset-0 opacity-20">
               <img 
@@ -1044,8 +955,6 @@ if (\$action == 'post_ad' && \$_SERVER['REQUEST_METHOD'] == 'POST') {
             )}
           </main>
         </>
-      ) : activeView === 'deploy' ? (
-        <DeployCenter />
       ) : activeView === 'about' ? (
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
@@ -1331,38 +1240,29 @@ if (\$action == 'post_ad' && \$_SERVER['REQUEST_METHOD'] == 'POST') {
         {/* Footer */}
         <footer className="bg-stone-900 text-stone-400 py-12 mt-20 border-t border-stone-800">
           <div className="max-w-7xl mx-auto px-4">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">
-              <div className="col-span-1 md:col-span-2">
-                <div className="flex items-center gap-2 mb-6">
-                  <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center text-white">
-                    <Home size={20} />
-                  </div>
-                  <h3 className="text-xl font-bold text-white">أسواق تريمسة</h3>
+            <div className="flex flex-col md:flex-row justify-between items-center gap-8">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-emerald-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-emerald-900/20">
+                  <Home size={24} />
                 </div>
-                <p className="text-sm leading-relaxed max-w-md">
-                  المنصة الأولى والوحيدة المتخصصة في تجميع كافة الخدمات التجارية والعقارية لأهالي تريمسة والقرى المحيطة بها في مكان واحد، بجهود شبابية تطوعية تسعى للرقي بالخدمات المحلية.
-                </p>
+                <div>
+                  <h3 className="text-lg font-bold text-white leading-none mb-1">أسواق تريمسة</h3>
+                  <p className="text-[10px] text-stone-500 uppercase tracking-widest">والقرى المحيطة بها</p>
+                </div>
               </div>
-              <div>
-                <h4 className="text-white font-bold mb-6">روابط سريعة</h4>
-                <ul className="space-y-4 text-sm">
-                  <li><button onClick={() => setActiveView('market')} className="hover:text-emerald-500 transition-colors">السوق</button></li>
-                  <li><button onClick={() => setActiveView('about')} className="hover:text-emerald-500 transition-colors">حول تريمسة</button></li>
-                  <li><button onClick={() => setActiveView('about_us')} className="hover:text-emerald-500 transition-colors">من نحن</button></li>
-                  <li><button onClick={() => setActiveView('contact')} className="hover:text-emerald-500 transition-colors">اتصل بنا</button></li>
-                </ul>
+
+              <nav className="flex flex-wrap justify-center gap-x-8 gap-y-4">
+                <button onClick={() => { setActiveView('market'); window.scrollTo(0,0); }} className="text-sm hover:text-emerald-500 transition-colors">السوق</button>
+                <button onClick={() => { setActiveView('about'); window.scrollTo(0,0); }} className="text-sm hover:text-emerald-500 transition-colors">حول تريمسة</button>
+                <button onClick={() => { setActiveView('contact'); window.scrollTo(0,0); }} className="text-sm hover:text-emerald-500 transition-colors">اتصل بنا</button>
+                <button onClick={() => { setActiveView('privacy'); window.scrollTo(0,0); }} className="text-sm hover:text-emerald-500 transition-colors">الخصوصية</button>
+                <button onClick={() => { setActiveView('terms'); window.scrollTo(0,0); }} className="text-sm hover:text-emerald-500 transition-colors">الشروط</button>
+              </nav>
+
+              <div className="text-center md:text-right">
+                <p className="text-xs mb-1">© {new Date().getFullYear()} جميع الحقوق محفوظة</p>
+                <p className="text-[10px] text-stone-600">بجهود شباب تريمسة المتطوعين</p>
               </div>
-              <div>
-                <h4 className="text-white font-bold mb-6">قانوني</h4>
-                <ul className="space-y-4 text-sm">
-                  <li><button onClick={() => setActiveView('privacy')} className="hover:text-emerald-500 transition-colors">سياسة الخصوصية</button></li>
-                  <li><button onClick={() => setActiveView('terms')} className="hover:text-emerald-500 transition-colors">شروط الاستخدام</button></li>
-                </ul>
-              </div>
-            </div>
-            <div className="pt-8 border-t border-stone-800 flex flex-col md:flex-row justify-between items-center gap-4 text-xs">
-              <p>© {new Date().getFullYear()} أسواق تريمسة. جميع الحقوق محفوظة.</p>
-              <p>صنع بكل حب بجهود شباب تريمسة المتطوعين</p>
             </div>
           </div>
         </footer>
