@@ -429,7 +429,7 @@ export default function App() {
         const blob = new Blob([byteArray], { type: 'image/png' });
 
         const { data, error } = await supabase.storage
-          .from('listings')
+          .from('ad-images')
           .upload(fileName, blob);
 
         if (error) {
@@ -438,7 +438,7 @@ export default function App() {
         }
 
         const { data: { publicUrl } } = supabase.storage
-          .from('listings')
+          .from('ad-images')
           .getPublicUrl(fileName);
           
         uploadedImageUrls.push(publicUrl);
